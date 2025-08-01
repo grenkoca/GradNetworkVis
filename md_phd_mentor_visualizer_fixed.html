@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MD-PhD Mentor Network Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #F0EEE6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #FEFCF7;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(93,90,82,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #8B7355 0%, #A0916B 100%);
+            color: #FEFCF7;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .controls {
+            padding: 20px;
+            background: #F5F3ED;
+            border-bottom: 1px solid #E6E2D6;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-right: 1px solid #E6E2D6;
+            padding-right: 15px;
+        }
+        
+        .control-group:last-child {
+            border-right: none;
+        }
+        
+        .column-selectors {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .column-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .column-group label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #5D5A52;
+        }
+        
+        .column-group select {
+            padding: 4px 8px;
+            border: 1px solid #D4CFC3;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #FEFCF7;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            background: #8B7355;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .file-input-wrapper:hover {
+            background: #73603F;
+        }
+        
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            font-size: 100px;
+            right: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .generate-btn {
+            background: #A0916B;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .generate-btn:hover {
+            background: #8B7D57;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #5D5A52;
+        }
+        
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            display: inline-block;
+            border-radius: 2px;
+        }
+        
+        #graph-container {
+            position: relative;
+            height: 700px;
+            overflow: hidden;
+        }
+        
+        #idle-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #F0EEE6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        
+        #idle-canvas {
+            border: none;
+            border-radius: 8px;
+        }
+        
+        #graph-svg {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        
+        #graph-svg:active {
+            cursor: grabbing;
+        }
+        
+        .node {
+            cursor: pointer;
+            stroke-width: 2px;
+            stroke: #5D5A52;
+        }
+        
+        .node:hover {
+            stroke-width: 3px;
+            filter: brightness(1.1);
+        }
+        
+        .node.selected {
+            stroke-width: 4px;
+            stroke: #000;
+        }
+        
+        .link {
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+        
+        .node-label {
+            font-size: 12px;
+            text-anchor: middle;
+            font-weight: 500;
+            pointer-events: none;
+            fill: #5D5A52;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(93,90,82,0.95);
+            color: #FEFCF7;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+            line-height: 1.4;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: #FEFCF7;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(93,90,82,0.15);
+            padding: 20px;
+            display: none;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .info-panel h3 {
+            margin-top: 0;
+            color: #5D5A52;
+            border-bottom: 2px solid #8B7355;
+            padding-bottom: 5px;
+        }
+        
+        .role-item {
+            margin: 10px 0;
+            padding: 8px;
+            border-left: 4px solid #D4CFC3;
+            background: #F5F3ED;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .close-panel {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #8B7355;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MD-PhD Mentor Network Visualizer</h1>
+            <p>Interactive visualization of MD-PhD student mentorship and thesis advisory committees</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <div class="file-input-wrapper">
+                    <input type="file" id="csvFile" accept=".tsv,.csv" />
+                    Load TSV/CSV Data
+                </div>
+                
+                <button class="generate-btn" onclick="generateSampleData()">Generate Sample Data</button>
+            </div>
+            
+            <div class="control-group" id="column-selection" style="display: none;">
+                <strong>Column Mapping:</strong>
+                <div class="column-selectors">
+                    <div class="column-group">
+                        <label>Node 1 (e.g., Faculty):</label>
+                        <select id="node1-column"></select>
+                    </div>
+                    <div class="column-group">
+                        <label>Node 2 (e.g., Student):</label>
+                        <select id="node2-column"></select>
+                    </div>
+                    <div class="column-group">
+                        <label>Relationship Type:</label>
+                        <select id="relationship-column"></select>
+                    </div>
+                    <button class="generate-btn" id="process-data-btn" onclick="processSelectedData()">Generate Visualization</button>
+                </div>
+            </div>
+            
+            <div class="legend">
+                <strong>Node Legend:</strong>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #2563eb;"></div>
+                    <span>Faculty/PIs</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #eeeeee;"></div>
+                    <span>Students</span>
+                </div>
+                <div class="legend-item">
+                    <span style="font-style: italic;">Node size = number of roles</span>
+                </div>
+            </div>
+            
+            <div class="legend" id="edge-legend" style="display: none;">
+                <strong>Edge Legend:</strong>
+                <div id="edge-legend-items"></div>
+            </div>
+        </div>
+        
+        <div id="graph-container">
+            <div id="idle-screen">
+                <canvas id="idle-canvas" width="800" height="600"></canvas>
+            </div>
+            <svg id="graph-svg"></svg>
+            <div class="info-panel" id="info-panel">
+                <button class="close-panel" onclick="closeInfoPanel()">&times;</button>
+                <h3 id="panel-title">Node Information</h3>
+                <div id="panel-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentData = [];
+        let rawFileData = [];
+        let fileHeaders = [];
+        let selectedColumns = {
+            node1: null,
+            node2: null,
+            relationship: null
+        };
+        let cleanedData = [];
+        let nodes = [];
+        let links = [];
+        let simulation;
+        let svg, g;
+        
+        // Double helix animation variables
+        let idleAnimationFrame = null;
+        let isIdleScreenVisible = true;
+        
+        // Node colors based on type
+        const nodeColors = {
+            'PI': '#2563eb',        // Blue for faculty/PIs
+            'Student': '#eeeeee'    // Gray
+        };
+        
+        // Base node sizes
+        const baseNodeSizes = {
+            'PI': 12,        // Base size for PIs
+            'Student': 10    // Base size for students
+        };
+        
+        // Double Helix Animation Code
+        function initializeDoubleHelixAnimation() {
+            const canvas = document.getElementById('idle-canvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = 800;
+            const height = canvas.height = 600;
+            let time = 0;
+            const backboneParticles1 = [];
+            const backboneParticles2 = [];
+            const basePairs = [];
+            let allPoints = [];
+            
+            // B-DNA specifications (scaled for visualization)
+            const ROTATION_PER_BP = 34.3 * Math.PI / 180; // 34.3° in radians
+            const BP_PER_TURN = 10.5;
+            const RISE_PER_BP = 8; // 3.32 Å scaled up for visibility
+            const HELIX_DIAMETER = 60; // 20 Å scaled up for visibility
+            const HELIX_RADIUS = HELIX_DIAMETER / 2;
+            const INCLINATION = -1.2 * Math.PI / 180; // -1.2° in radians
+            const PROPELLER_TWIST = 16 * Math.PI / 180; // 16° in radians
+            const PITCH_PER_TURN = RISE_PER_BP * BP_PER_TURN; // 33.2 Å equivalent
+            
+            const numBasePairs = 80;
+            const TWO_PI = Math.PI * 2;
+            const animationSpeed = 0.01;
+
+            const random = (min, max) => {
+                if (max === undefined) {
+                    max = min;
+                    min = 0;
+                }
+                return Math.random() * (max - min) + min;
+            };
+
+            const map = (value, start1, stop1, start2, stop2) => {
+                return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
+            };
+
+            const dist = (x1, y1, z1, x2, y2, z2) => {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const dz = z2 - z1;
+                return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            };
+
+            class BackboneParticle {
+                constructor(bpIndex, strand) {
+                    this.bpIndex = bpIndex;
+                    this.strand = strand; // 1 or 2
+                    this.baseY = (bpIndex - numBasePairs / 2) * RISE_PER_BP;
+                    this.size = random(2, 4);
+                    this.opacity = random(160, 200);
+                    this.entropy = random(0.8, 1.2); // Random fluctuation factor
+                    this.phaseNoise = random(0, TWO_PI); // Random phase offset for breathing
+                    this.radiusNoise = random(0.85, 1.15); // Random radius variation
+                    this.yNoise = random(-2, 2); // Random y position variation
+                    this.connections = new Set(); // Track dynamic connections
+                }
+
+                update(time) {
+                    // Calculate rotation based on B-DNA geometry with entropy
+                    const rotation = this.bpIndex * ROTATION_PER_BP + time * animationSpeed * this.entropy;
+                    
+                    // Apply strand-specific phase offset (180° for opposite strands)
+                    const strandPhase = this.strand === 1 ? 0 : Math.PI;
+                    const totalRotation = rotation + strandPhase + this.phaseNoise * 0.1;
+                    
+                    // Add breathing motion and entropy
+                    const breathingRadius = HELIX_RADIUS * this.radiusNoise * (1 + Math.sin(time * 0.03 + this.phaseNoise) * 0.1);
+                    
+                    // Calculate 3D position with proper B-DNA geometry plus entropy
+                    const x = width / 2 + Math.cos(totalRotation) * breathingRadius;
+                    const y = height / 2 + this.baseY + this.yNoise + Math.sin(time * 0.02 + this.phaseNoise) * 3;
+                    const z = Math.sin(totalRotation) * breathingRadius;
+                    
+                    // Apply base inclination with some wobble
+                    const inclinedY = y + Math.sin(totalRotation) * Math.sin(INCLINATION) * 5;
+                    
+                    return {
+                        x, 
+                        y: inclinedY, 
+                        z,
+                        size: this.size,
+                        opacity: this.opacity,
+                        strand: this.strand,
+                        bpIndex: this.bpIndex,
+                        rotation: totalRotation,
+                        entropy: this.entropy,
+                        connections: this.connections
+                    };
+                }
+            }
+
+            class BasePair {
+                constructor(bpIndex) {
+                    this.bpIndex = bpIndex;
+                    this.baseY = (bpIndex - numBasePairs / 2) * RISE_PER_BP;
+                    this.size = random(3, 5);
+                    this.opacity = random(120, 160);
+                    // Simulate different base pair types (A-T, G-C)
+                    this.type = random() > 0.6 ? 'GC' : 'AT'; // GC pairs are less common but stronger
+                    this.strength = this.type === 'GC' ? random(0.7, 1.0) : random(0.4, 0.8); // Variable bond strength
+                    this.bondPhase = random(0, TWO_PI); // For bond fluctuation
+                    this.isConnected = true; // Dynamic connection state
+                    this.reconnectionTimer = 0;
+                }
+
+                update(time) {
+                    const rotation = this.bpIndex * ROTATION_PER_BP + time * animationSpeed;
+                    
+                    // Dynamic bond breaking and forming (entropy)
+                    this.reconnectionTimer += 1;
+                    const bondStability = this.type === 'GC' ? 0.98 : 0.95; // GC bonds more stable
+                    
+                    if (this.isConnected && random() > bondStability) {
+                        this.isConnected = false;
+                        this.reconnectionTimer = 0;
+                    } else if (!this.isConnected && this.reconnectionTimer > random(30, 80)) {
+                        this.isConnected = true;
+                        this.reconnectionTimer = 0;
+                    }
+                    
+                    // Add bond fluctuation
+                    const bondFluctuation = Math.sin(time * 0.05 + this.bondPhase) * 0.1 + 1;
+                    
+                    // Calculate positions for both bases in the pair
+                    const x1 = width / 2 + Math.cos(rotation) * HELIX_RADIUS;
+                    const x2 = width / 2 + Math.cos(rotation + Math.PI) * HELIX_RADIUS;
+                    const y = height / 2 + this.baseY;
+                    const z1 = Math.sin(rotation) * HELIX_RADIUS;
+                    const z2 = Math.sin(rotation + Math.PI) * HELIX_RADIUS;
+                    
+                    // Apply propeller twist to base pairs with fluctuation
+                    const propellerOffset = Math.sin(PROPELLER_TWIST) * 3 * bondFluctuation;
+                    
+                    return {
+                        x1, y, z1,
+                        x2, y: y + propellerOffset, z2,
+                        size: this.size,
+                        opacity: this.opacity,
+                        type: this.type,
+                        bpIndex: this.bpIndex,
+                        strength: this.strength * bondFluctuation,
+                        isConnected: this.isConnected
+                    };
+                }
+            }
+
+            // Initialize particles based on B-DNA structure
+            for (let i = 0; i < numBasePairs; i++) {
+                backboneParticles1.push(new BackboneParticle(i, 1));
+                backboneParticles2.push(new BackboneParticle(i, 2));
+                basePairs.push(new BasePair(i));
+            }
+
+            const targetFPS = 30;
+            const frameInterval = 1000 / targetFPS;
+            let lastFrameTime = 0;
+
+            const animate = (currentTime) => {
+                if (!isIdleScreenVisible) return;
+                
+                if (!lastFrameTime) {
+                    lastFrameTime = currentTime;
+                    idleAnimationFrame = requestAnimationFrame(animate);
+                    return;
+                }
+
+                const deltaTime = currentTime - lastFrameTime;
+
+                if (deltaTime >= frameInterval) {
+                    const remainder = deltaTime % frameInterval;
+                    lastFrameTime = currentTime - remainder;
+
+                    ctx.fillStyle = '#F0EEE6';
+                    ctx.fillRect(0, 0, width, height);
+
+                    time += 1;
+
+                    // Update all particles
+                    const backbone1Points = backboneParticles1.map(p => p.update(time));
+                    const backbone2Points = backboneParticles2.map(p => p.update(time));
+                    const basePairPoints = basePairs.map(p => p.update(time));
+                    
+                    allPoints = [...backbone1Points, ...backbone2Points];
+                    allPoints.sort((a, b) => a.z - b.z);
+
+                    // Clear old connections
+                    backbone1Points.forEach(p => p.connections.clear());
+                    backbone2Points.forEach(p => p.connections.clear());
+
+                    // Draw entropic connections between nearby particles
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i < allPoints.length; i++) {
+                        const p1 = allPoints[i];
+                        for (let j = i + 1; j < allPoints.length; j++) {
+                            const p2 = allPoints[j];
+                            const d = dist(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+                            
+                            // Random connections form and break (entropy)
+                            if (d < 80 && random() > 0.7) {
+                                const opacity = map(d, 0, 80, 0.3, 0.05) * map(Math.min(p1.z, p2.z), -HELIX_RADIUS, HELIX_RADIUS, 0.3, 1);
+                                ctx.strokeStyle = `rgba(60, 60, 60, ${opacity})`;
+                                ctx.beginPath();
+                                ctx.moveTo(p1.x, p1.y);
+                                ctx.lineTo(p2.x, p2.y);
+                                ctx.stroke();
+                                
+                                p1.connections.add(j);
+                                p2.connections.add(i);
+                            }
+                        }
+                    }
+
+                    // Draw base pairs (hydrogen bonds) with dynamic behavior
+                    ctx.lineWidth = 1.5;
+                    basePairPoints.forEach(bp => {
+                        if (bp.isConnected) {
+                            const depthFactor = map(Math.min(bp.z1, bp.z2), -HELIX_RADIUS, HELIX_RADIUS, 0.3, 1);
+                            const opacity = (bp.opacity / 255) * depthFactor * bp.strength;
+                            
+                            // Draw base pair connection with fluctuation
+                            ctx.strokeStyle = `rgba(80, 40, 120, ${opacity})`;
+                            ctx.beginPath();
+                            ctx.moveTo(bp.x1, bp.y);
+                            ctx.lineTo(bp.x2, bp.y);
+                            ctx.stroke();
+                        }
+                        
+                        // Draw individual bases (always present even when bonds break)
+                        const baseSize = bp.size * map(Math.min(bp.z1, bp.z2), -HELIX_RADIUS, HELIX_RADIUS, 0.8, 1.3);
+                        const baseOpacity = (bp.opacity / 255) * map(Math.min(bp.z1, bp.z2), -HELIX_RADIUS, HELIX_RADIUS, 0.4, 1);
+                        const baseColor = bp.type === 'GC' ? 'rgba(120, 60, 40, ' : 'rgba(60, 120, 40, ';
+                        
+                        ctx.fillStyle = baseColor + baseOpacity + ')';
+                        ctx.beginPath();
+                        ctx.arc(bp.x1, bp.y, baseSize / 2, 0, TWO_PI);
+                        ctx.fill();
+                        
+                        ctx.beginPath();
+                        ctx.arc(bp.x2, bp.y, baseSize / 2, 0, TWO_PI);
+                        ctx.fill();
+                    });
+
+                    // Draw sugar-phosphate backbone connections with some entropy
+                    ctx.lineWidth = 2;
+                    [backbone1Points, backbone2Points].forEach((backbonePoints, strandIndex) => {
+                        const strandColor = strandIndex === 0 ? 'rgba(200, 100, 50, ' : 'rgba(50, 100, 200, ';
+                        
+                        for (let i = 0; i < backbonePoints.length - 1; i++) {
+                            const p1 = backbonePoints[i];
+                            const p2 = backbonePoints[i + 1];
+                            
+                            // Only connect adjacent base pairs in sequence, but with some random breaks
+                            if (Math.abs(p1.bpIndex - p2.bpIndex) === 1 && random() > 0.05) {
+                                const depthFactor = map(Math.min(p1.z, p2.z), -HELIX_RADIUS, HELIX_RADIUS, 0.4, 1);
+                                const opacity = 0.6 * depthFactor * (0.7 + random() * 0.3); // Add some opacity variation
+                                
+                                ctx.strokeStyle = strandColor + opacity + ')';
+                                ctx.beginPath();
+                                ctx.moveTo(p1.x, p1.y);
+                                ctx.lineTo(p2.x, p2.y);
+                                ctx.stroke();
+                            }
+                        }
+                    });
+
+                    // Draw phosphate groups (backbone particles) with size variation
+                    allPoints.forEach(point => {
+                        const sizeMultiplier = map(point.z, -HELIX_RADIUS, HELIX_RADIUS, 0.7, 1.4) * (0.8 + random() * 0.4);
+                        const adjustedOpacity = map(point.z, -HELIX_RADIUS, HELIX_RADIUS, point.opacity * 0.5, point.opacity);
+                        
+                        const strandColor = point.strand === 1 ? 'rgba(180, 80, 30, ' : 'rgba(30, 80, 180, ';
+                        ctx.fillStyle = strandColor + (adjustedOpacity / 255) + ')';
+                        ctx.beginPath();
+                        ctx.arc(point.x, point.y, (point.size * sizeMultiplier) / 2, 0, TWO_PI);
+                        ctx.fill();
+                    });
+
+                    // Draw flowing connections between distant particles
+                    ctx.lineWidth = 0.8;
+                    for (let i = 0; i < allPoints.length; i++) {
+                        const p1 = allPoints[i];
+                        if (random() > 0.95) { // Very random, sparse connections
+                            for (let j = 0; j < allPoints.length; j++) {
+                                if (i !== j) {
+                                    const p2 = allPoints[j];
+                                    const d = dist(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+                                    if (d < 150 && random() > 0.8) {
+                                        const opacity = map(d, 0, 150, 0.2, 0.02) * map(Math.min(p1.z, p2.z), -HELIX_RADIUS, HELIX_RADIUS, 0.2, 0.8);
+                                        ctx.strokeStyle = `rgba(40, 40, 40, ${opacity})`;
+                                        ctx.beginPath();
+                                        ctx.moveTo(p1.x, p1.y);
+                                        ctx.lineTo(p2.x, p2.y);
+                                        ctx.stroke();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                idleAnimationFrame = requestAnimationFrame(animate);
+            };
+
+            idleAnimationFrame = requestAnimationFrame(animate);
+        }
+        
+        function hideIdleScreen() {
+            isIdleScreenVisible = false;
+            if (idleAnimationFrame) {
+                cancelAnimationFrame(idleAnimationFrame);
+                idleAnimationFrame = null;
+            }
+            document.getElementById('idle-screen').style.display = 'none';
+        }
+        
+        function showIdleScreen() {
+            isIdleScreenVisible = true;
+            document.getElementById('idle-screen').style.display = 'flex';
+            initializeDoubleHelixAnimation();
+        }
+        
+        // Initialize the visualization
+        function initializeGraph() {
+            svg = d3.select("#graph-svg");
+            g = svg.append("g");
+            
+            // Add zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                });
+            
+            svg.call(zoom);
+        }
+        
+        // Parse file headers and show column selection
+        function parseFileHeaders(csvData) {
+            if (csvData.length === 0) {
+                alert('No data found in file.');
+                return;
+            }
+            
+            // Store raw data and extract headers
+            rawFileData = csvData;
+            fileHeaders = Object.keys(csvData[0]);
+            
+            console.log('File headers:', fileHeaders);
+            
+            // Populate column selectors
+            populateColumnSelectors();
+            
+            // Show column selection interface
+            document.getElementById('column-selection').style.display = 'flex';
+        }
+        
+        // Populate column selector dropdowns
+        function populateColumnSelectors() {
+            const selectors = ['node1-column', 'node2-column', 'relationship-column'];
+            
+            selectors.forEach(selectorId => {
+                const select = document.getElementById(selectorId);
+                select.innerHTML = '<option value="">Select column...</option>';
+                
+                fileHeaders.forEach(header => {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header;
+                    select.appendChild(option);
+                });
+            });
+            
+            // Try to auto-select common column names
+            autoSelectColumns();
+        }
+        
+        // Auto-select common column names if they exist
+        function autoSelectColumns() {
+            const commonMappings = {
+                'node1-column': ['NAME_LFMI', 'PI', 'FACULTY', 'MENTOR', 'ADVISOR'],
+                'node2-column': ['STUDENT', 'ADVISEE', 'MENTEE'],
+                'relationship-column': ['ROLE', 'RELATIONSHIP', 'TYPE', 'EDGE_TYPE']
+            };
+            
+            Object.entries(commonMappings).forEach(([selectorId, possibleNames]) => {
+                const select = document.getElementById(selectorId);
+                for (const name of possibleNames) {
+                    if (fileHeaders.includes(name)) {
+                        select.value = name;
+                        break;
+                    }
+                }
+            });
+        }
+        
+        // Process data with selected columns
+        function processSelectedData() {
+            // Get selected columns
+            selectedColumns.node1 = document.getElementById('node1-column').value;
+            selectedColumns.node2 = document.getElementById('node2-column').value;
+            selectedColumns.relationship = document.getElementById('relationship-column').value;
+            
+            // Validate selections
+            if (!selectedColumns.node1 || !selectedColumns.node2 || !selectedColumns.relationship) {
+                alert('Please select all required columns (Node 1, Node 2, and Relationship Type).');
+                return;
+            }
+            
+            console.log('Selected columns:', selectedColumns);
+            
+            // Process the data
+            processData(rawFileData);
+        }
+        
+        // Process data using selected columns
+        function processData(csvData) {
+            // Hide idle screen when processing data
+            hideIdleScreen();
+            
+            // Clean and validate data using selected columns
+            cleanedData = csvData.filter(row => {
+                // Remove rows with missing essential data using selected columns
+                return row[selectedColumns.node1] && 
+                       row[selectedColumns.node2] && 
+                       row[selectedColumns.relationship] &&
+                       row[selectedColumns.node1].toString().trim() !== '' &&
+                       row[selectedColumns.node2].toString().trim() !== '' &&
+                       row[selectedColumns.relationship].toString().trim() !== '';
+            }).map(row => {
+                return {
+                    'Node1': row[selectedColumns.node1].toString().trim(),
+                    'Node2': row[selectedColumns.node2].toString().trim(), 
+                    'Relationship': row[selectedColumns.relationship].toString().trim()
+                };
+            });
+            
+            console.log(`Original data: ${csvData.length} rows, Cleaned data: ${cleanedData.length} rows`);
+            
+            if (cleanedData.length === 0) {
+                alert('No valid data found. Please check your file format.');
+                return;
+            }
+            
+            currentData = cleanedData; // Store cleaned data globally
+            
+            // Create nodes and relationships
+            const nodeMap = new Map();
+            const piStudentRelations = new Map();
+            
+            // Process each relationship
+            cleanedData.forEach(row => {
+                const node1 = row['Node1'];
+                const node2 = row['Node2'];
+                const relationship = row['Relationship'];
+                
+                // Initialize nodes (assume node1 is faculty/PI, node2 is student)
+                if (!nodeMap.has(node1)) {
+                    nodeMap.set(node1, {
+                        id: node1,
+                        type: 'PI',
+                        roles: new Map()
+                    });
+                }
+                
+                if (!nodeMap.has(node2)) {
+                    nodeMap.set(node2, {
+                        id: node2,
+                        type: 'Student',
+                        roles: new Map()
+                    });
+                }
+                
+                // Track relationships
+                const relationKey = `${node1}|${node2}`;
+                if (!piStudentRelations.has(relationKey)) {
+                    piStudentRelations.set(relationKey, []);
+                }
+                piStudentRelations.get(relationKey).push({
+                    relationship,
+                    node1,
+                    node2
+                });
+                
+                // Update node roles
+                const node1Obj = nodeMap.get(node1);
+                const node2Obj = nodeMap.get(node2);
+                
+                if (!node1Obj.roles.has(node2)) {
+                    node1Obj.roles.set(node2, []);
+                }
+                if (!node2Obj.roles.has(node1)) {
+                    node2Obj.roles.set(node1, []);
+                }
+                
+                node1Obj.roles.get(node2).push({ role: relationship });
+                node2Obj.roles.get(node1).push({ role: relationship });
+            });
+            
+            // Set node colors and calculate sizes based on number of roles
+            nodeMap.forEach(node => {
+                // Set color based on node type (PI vs Student)
+                node.color = nodeColors[node.type];
+                
+                // Calculate total number of roles for this node
+                let totalRoles = 0;
+                node.roles.forEach(roles => {
+                    totalRoles += roles.length;
+                });
+                
+                // Set node size based on base size + number of roles
+                const baseSize = baseNodeSizes[node.type];
+                node.size = baseSize + (totalRoles * 2); // Add 2 pixels per role
+                node.totalRoles = totalRoles;
+            });
+            
+            nodes = Array.from(nodeMap.values());
+            
+            // Create links between nodes
+            links = [];
+            piStudentRelations.forEach((relationships, relationKey) => {
+                const [node1, node2] = relationKey.split('|');
+                
+                // Use the relationship type directly
+                const relationshipTypes = relationships.map(r => r.relationship);
+                const linkType = relationshipTypes[0]; // Use first relationship type
+                
+                links.push({
+                    source: node1,
+                    target: node2,
+                    type: linkType,
+                    relationships: relationships
+                });
+            });
+            
+            console.log(`Processed ${nodes.length} nodes and ${links.length} links`);
+            createVisualization();
+        }
+        
+        // Create the D3 visualization
+        function createVisualization() {
+            // Clear previous visualization
+            g.selectAll("*").remove();
+            updateEdgeLegend();
+            createNetworkView();
+        }
+        
+        // New color palette
+        const COLORS_LARGE_PALLETE = [
+          '#1b9e77', '#d95f02', '#7570b3', '#e7298e', '#e6ab02'
+        ];
+        
+        // Store edge colors (can be modified by user)
+        let edgeColors = new Map();
+        
+        // Update edge legend based on current data
+        function updateEdgeLegend() {
+            const edgeLegend = document.getElementById('edge-legend');
+            const edgeLegendItems = document.getElementById('edge-legend-items');
+            
+            // Get unique relationship types from links
+            const relationshipTypes = [...new Set(links.map(l => l.type))];
+            
+            if (relationshipTypes.length > 0) {
+                // Clear existing items
+                edgeLegendItems.innerHTML = '';
+                
+                // Create legend items for each relationship type
+                relationshipTypes.forEach((type, index) => {
+                    // Use new color palette with fallback
+                    const colorIndex = index % COLORS_LARGE_PALLETE.length;
+                    const defaultColor = COLORS_LARGE_PALLETE[colorIndex];
+                    const color = edgeColors.get(type) || defaultColor;
+                    
+                    // Store the color if not already stored
+                    if (!edgeColors.has(type)) {
+                        edgeColors.set(type, color);
+                    }
+                    
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    legendItem.innerHTML = `
+                        <div class="legend-line" style="background: ${color}; cursor: pointer;" data-edge-type="${type}"></div>
+                        <span>${type}</span>
+                    `;
+                    edgeLegendItems.appendChild(legendItem);
+                });
+                
+                // Add click handlers to legend items
+                edgeLegendItems.querySelectorAll('.legend-line').forEach(line => {
+                    line.addEventListener('click', (event) => {
+                        const edgeType = event.target.getAttribute('data-edge-type');
+                        changeEdgeColor(edgeType);
+                    });
+                });
+                
+                // Show the edge legend
+                edgeLegend.style.display = 'flex';
+            } else {
+                // Hide the edge legend if no relationships
+                edgeLegend.style.display = 'none';
+            }
+        }
+        
+        // Create network view with force-directed layout
+        function createNetworkView() {
+            // Show all links (no filtering)
+            const visibleLinks = links;
+            
+            console.log('Total links:', links.length);
+            console.log('Link types:', [...new Set(links.map(l => l.type))]);
+            
+            // Validate that all link source/target nodes exist
+            const nodeIds = new Set(nodes.map(n => n.id));
+            const validLinks = visibleLinks.filter(link => {
+                const sourceExists = nodeIds.has(link.source);
+                const targetExists = nodeIds.has(link.target);
+                return sourceExists && targetExists;
+            });
+            
+            console.log(`Valid links: ${validLinks.length} out of ${links.length}`);
+            
+            // Create custom force simulation
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(validLinks)
+                    .id(d => d.id)
+                    .distance(80)
+                    .strength(0.5)
+                )
+                .force("charge", d3.forceManyBody()
+                    .strength(d => {
+                        return d.type === 'PI' ? -800 : -400;
+                    })
+                )
+                .force("center", d3.forceCenter(700, 350))
+                .force("collision", d3.forceCollide()
+                    .radius(d => d.size + 5)
+                );
+            
+            // Create links
+            const link = g.append("g")
+                .selectAll("line")
+                .data(validLinks)
+                .enter().append("line")
+                .attr("class", d => `link ${d.type}`)
+                .attr("stroke", d => {
+                    // Use the color from edgeColors map or default from palette
+                    return edgeColors.get(d.type) || COLORS_LARGE_PALLETE[0];
+                })
+                .attr("stroke-width", 2)
+                .attr("stroke-opacity", 0.7);
+            
+            // Create nodes
+            const node = g.append("g")
+                .selectAll("circle")
+                .data(nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", d => d.size)
+                .attr("fill", d => d.color)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", showNodeInfo)
+                .on("mouseover", showTooltip)
+                .on("mouseout", hideTooltip);
+            
+            // Create labels
+            const label = g.append("g")
+                .selectAll("text")
+                .data(nodes)
+                .enter().append("text")
+                .attr("class", "node-label")
+                .attr("dy", d => d.size + 10)
+                .text(d => {
+                    return d.id.length > 15 ? d.id.substring(0, 15) + '...' : d.id;
+                });
+            
+            // Update positions on tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+        }
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Tooltip functions
+        function showTooltip(event, d) {
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+            
+            const roleCounts = {};
+            d.roles.forEach(roles => {
+                roles.forEach(roleData => {
+                    roleCounts[roleData.role] = (roleCounts[roleData.role] || 0) + 1;
+                });
+            });
+            
+            const roleSummary = Object.entries(roleCounts)
+                .map(([type, count]) => `${type}: ${count}`)
+                .join('<br>');
+            
+            tooltip.transition()
+                .duration(200)
+                .style("opacity", .9);
+            
+            tooltip.html(`
+                <strong>${d.id}</strong><br>
+                Type: ${d.type}<br>
+                Total roles: ${d.totalRoles}<br>
+                ${roleSummary}
+            `)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 28) + "px");
+        }
+        
+        function hideTooltip() {
+            d3.selectAll(".tooltip").remove();
+        }
+        
+        // Show detailed node information
+        function showNodeInfo(event, d) {
+            // Remove previous selection
+            d3.selectAll(".node").classed("selected", false);
+            d3.select(event.target).classed("selected", true);
+            
+            const panel = document.getElementById('info-panel');
+            const title = document.getElementById('panel-title');
+            const content = document.getElementById('panel-content');
+            
+            title.textContent = `${d.id} (${d.type})`;
+            
+            // Group roles by relationship
+            let contentHTML = '';
+            d.roles.forEach((roles, partner) => {
+                contentHTML += `<h4>${partner}</h4>`;
+                
+                roles.forEach(roleData => {
+                    contentHTML += `
+                        <div class="role-item">
+                            <strong>${roleData.role.toUpperCase()}</strong>
+                        </div>
+                    `;
+                });
+            });
+            
+            content.innerHTML = contentHTML;
+            panel.style.display = 'block';
+        }
+        
+        function closeInfoPanel() {
+            document.getElementById('info-panel').style.display = 'none';
+            d3.selectAll(".node").classed("selected", false);
+        }
+        
+        // Change edge color function
+        function changeEdgeColor(edgeType) {
+            const currentColor = edgeColors.get(edgeType) || COLORS_LARGE_PALLETE[0];
+            const newColor = prompt(`Enter a hex color for "${edgeType}" edges:`, currentColor);
+            
+            if (newColor && /^#[0-9A-F]{6}$/i.test(newColor)) {
+                // Update the stored color
+                edgeColors.set(edgeType, newColor);
+                
+                // Update the visualization
+                g.selectAll("line")
+                    .filter(d => d.type === edgeType)
+                    .attr("stroke", newColor);
+                
+                // Update the legend
+                const legendLine = document.querySelector(`[data-edge-type="${edgeType}"]`);
+                if (legendLine) {
+                    legendLine.style.background = newColor;
+                }
+            } else if (newColor !== null) {
+                alert('Please enter a valid hex color (e.g., #FF0000)');
+            }
+        }
+        
+        // Generate sample data for network visualization
+        function generateSampleData() {
+            // Hide idle screen when generating sample data
+            hideIdleScreen();
+            
+            const sampleData = [
+                // Student with primary mentor and TAC
+                { 'Faculty': 'Dr. Sarah Johnson', 'Student': 'Alex Smith', 'Relationship': 'Mentor' },
+                { 'Faculty': 'Dr. Michael Brown', 'Student': 'Alex Smith', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. Jennifer Davis', 'Student': 'Alex Smith', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. David Wilson', 'Student': 'Alex Smith', 'Relationship': 'Ex-officio' },
+                { 'Faculty': 'Dr. Lisa Garcia', 'Student': 'Alex Smith', 'Relationship': 'Rotation' },
+                
+                // Student with co-mentorship
+                { 'Faculty': 'Dr. Michael Brown', 'Student': 'Jordan Taylor', 'Relationship': 'Mentor' },
+                { 'Faculty': 'Dr. Robert Miller', 'Student': 'Jordan Taylor', 'Relationship': 'CoMentor' },
+                { 'Faculty': 'Dr. Sarah Johnson', 'Student': 'Jordan Taylor', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. Jennifer Davis', 'Student': 'Jordan Taylor', 'Relationship': 'Rotation' },
+                
+                // Student with different primary mentor
+                { 'Faculty': 'Dr. David Wilson', 'Student': 'Casey Morgan', 'Relationship': 'Mentor' },
+                { 'Faculty': 'Dr. Lisa Garcia', 'Student': 'Casey Morgan', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. Sarah Johnson', 'Student': 'Casey Morgan', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. Michael Brown', 'Student': 'Casey Morgan', 'Relationship': 'Rotation' },
+                
+                // Additional students for network richness
+                { 'Faculty': 'Dr. Sarah Johnson', 'Student': 'Riley Kim', 'Relationship': 'Mentor' },
+                { 'Faculty': 'Dr. Jennifer Davis', 'Student': 'Riley Kim', 'Relationship': 'CoMentor' },
+                { 'Faculty': 'Dr. David Wilson', 'Student': 'Riley Kim', 'Relationship': 'TAC' },
+                
+                { 'Faculty': 'Dr. Robert Miller', 'Student': 'Sage Chen', 'Relationship': 'Mentor' },
+                { 'Faculty': 'Dr. Lisa Garcia', 'Student': 'Sage Chen', 'Relationship': 'TAC' },
+                { 'Faculty': 'Dr. Michael Brown', 'Student': 'Sage Chen', 'Relationship': 'Outside' },
+            ];
+            
+            // Set up sample data to work with column selection
+            selectedColumns = {
+                node1: 'Faculty',
+                node2: 'Student',
+                relationship: 'Relationship'
+            };
+            
+            processData(sampleData);
+        }
+        
+        // File upload handler
+        document.getElementById('csvFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                Papa.parse(file, {
+                    header: true,
+                    delimiter: '\t',
+                    complete: function(results) {
+                        if (results.data && results.data.length > 0) {
+                            // Filter out empty rows
+                            const validData = results.data.filter(row => 
+                                row && Object.values(row).some(val => val && val.toString().trim() !== '')
+                            );
+                            if (validData.length > 0) {
+                                parseFileHeaders(validData);
+                            } else {
+                                alert('No valid data found in the file.');
+                            }
+                        } else {
+                            alert('No data found in the file.');
+                        }
+                    },
+                    error: function(error) {
+                        console.error('Error parsing file:', error);
+                        alert('Error parsing file. Please check the format.');
+                    }
+                });
+            }
+        });
+        
+        // Initialize the graph
+        initializeGraph();
+        
+        // Initialize and show the idle screen
+        initializeDoubleHelixAnimation();
+        
+        // Load sample data by default for demonstration
+        // generateSampleData();
+    </script>
+</body>
+</html>
